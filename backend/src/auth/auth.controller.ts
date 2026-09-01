@@ -1,5 +1,14 @@
-import { Body, Controller, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  Request,
+  UseGuards,
+} from '@nestjs/common';
+
 import { AuthService } from './auth.service';
+import { JwtAuthGuard } from './jwt-auth.guard';
 
 @Controller('auth')
 export class AuthController {
@@ -10,6 +19,7 @@ export class AuthController {
   // =========================
   // SIGNUP
   // =========================
+
   @Post('signup')
   async signup(
     @Body()
@@ -33,6 +43,7 @@ export class AuthController {
   // =========================
   // EMAIL + PASSWORD LOGIN
   // =========================
+
   @Post('login')
   async login(
     @Body()
@@ -50,6 +61,7 @@ export class AuthController {
   // =========================
   // SEND OTP
   // =========================
+
   @Post('send-otp')
   async sendOtp(
     @Body()
@@ -65,6 +77,7 @@ export class AuthController {
   // =========================
   // VERIFY OTP
   // =========================
+
   @Post('verify-otp')
   async verifyOtp(
     @Body()
@@ -77,5 +90,18 @@ export class AuthController {
       body.mobile,
       body.otp,
     );
+  }
+
+  // =========================
+  // GET CURRENT USER
+  // =========================
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  async getMe(@Request() req: any) {
+    return {
+      message: 'Authenticated successfully',
+      user: req.user,
+    };
   }
 }

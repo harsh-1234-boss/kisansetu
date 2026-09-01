@@ -5,85 +5,208 @@ import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 
 export default function VerifyOtpPage() {
-
   const router = useRouter();
   const searchParams = useSearchParams();
 
   const mobile = searchParams.get("mobile") || "";
 
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
+  const [loading, setLoading] = useState(false);
+  const [resendLoading, setResendLoading] = useState(false);
+  const [resendCooldown, setResendCooldown] = useState(0);
 
-  const handleChange = (
-    index: number,
-    value: string
-  ) => {
-
-    const digit = value.replace(/\D/g, "");
+  // =========================
+  // OTP INPUT
+  // =========================
+  const handleChange = (index: number, value: string) => {
+    const digit = value.replace(/\D/g, "").slice(-1);
 
     if (!digit) return;
 
     const newOtp = [...otp];
-
     newOtp[index] = digit;
 
     setOtp(newOtp);
 
     // Move to next box
     if (index < 5) {
-      const nextInput = document.getElementById(
-        `otp-${index + 1}`
-      );
-
-      nextInput?.focus();
+      document.getElementById(`otp-${index + 1}`)?.focus();
     }
   };
 
+  // =========================
+  // BACKSPACE
+  // =========================
   const handleKeyDown = (
     index: number,
     e: React.KeyboardEvent<HTMLInputElement>
   ) => {
-
     if (
       e.key === "Backspace" &&
       !otp[index] &&
       index > 0
     ) {
-
-      const previousInput = document.getElementById(
-        `otp-${index - 1}`
-      );
-
-      previousInput?.focus();
+      document.getElementById(`otp-${index - 1}`)?.focus();
     }
   };
 
-  const handleVerify = (
+  // =========================
+  // RESEND OTP
+  // =========================
+  const handleResendOtp = async () => {
+    if (!mobile) {
+      alert("Mobile number is missing.");
+      return;
+    }
+
+    if (resendCooldown > 0 || resendLoading) {
+      return;
+    }
+
+    try {
+      setResendLoading(true);
+
+      const response = await fetch(
+        "http://localhost:4000/auth/send-otp",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            mobile,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.message || "Unable to resend OTP.");
+        return;
+      }
+
+      // Clear old OTP
+      setOtp(["", "", "", "", "", ""]);
+
+      // Focus first OTP box
+      document.getElementById("otp-0")?.focus();
+
+      alert("New OTP sent successfully.");
+
+      // Start 60 second cooldown
+      setResendCooldown(60);
+
+      const timer = setInterval(() => {
+        setResendCooldown((prev) => {
+          if (prev <= 1) {
+            clearInterval(timer);
+            return 0;
+          }
+
+          return prev - 1;
+        });
+      }, 1000);
+    } catch (error) {
+      console.error("Resend OTP error:", error);
+
+      alert(
+        "Unable to connect to the server. Please make sure the backend is running."
+      );
+    } finally {
+      setResendLoading(false);
+    }
+  };
+
+  // =========================
+  // VERIFY OTP
+  // =========================
+  const handleVerify = async (
     e: React.FormEvent<HTMLFormElement>
   ) => {
-
     e.preventDefault();
 
     const enteredOtp = otp.join("");
 
-    // Demo OTP
-    if (enteredOtp !== "123456") {
-
-      alert(
-        "Invalid OTP. For demo, please enter 123456."
-      );
-
+    if (enteredOtp.length !== 6) {
+      alert("Please enter the complete 6-digit OTP.");
       return;
     }
 
-    router.push("/dashboard");
+    if (!mobile) {
+      alert("Mobile number is missing.");
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      const response = await fetch(
+        "http://localhost:4000/auth/verify-otp",
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            mobile,
+            otp: enteredOtp,
+          }),
+        }
+      );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        alert(data.message || "Invalid OTP.");
+        return;
+      }
+
+      console.log("Login successful:", data);
+
+      // =========================
+      // STORE JWT
+      // =========================
+      localStorage.setItem(
+        "access_token",
+        data.access_token
+      );
+
+      // =========================
+      // STORE USER
+      // =========================
+      localStorage.setItem(
+        "user",
+        JSON.stringify(data.user)
+      );
+
+      alert("Mobile number verified successfully!");
+
+      // =========================
+      // GO TO DASHBOARD
+      // =========================
+      router.push("/dashboard");
+    } catch (error) {
+      console.error(
+        "OTP verification error:",
+        error
+      );
+
+      alert(
+        "Unable to connect to the server. Please make sure the backend is running."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <main className="min-h-screen bg-gray-50 flex items-center justify-center px-4 py-10">
-
       <div className="w-full max-w-md">
 
-        {/* Header */}
+        {/* =========================
+            HEADER
+        ========================= */}
         <div className="text-center mb-8">
 
           <div className="mx-auto mb-4 w-16 h-16 rounded-full bg-green-100 flex items-center justify-center text-4xl">
@@ -100,12 +223,16 @@ export default function VerifyOtpPage() {
 
         </div>
 
-        {/* Card */}
+        {/* =========================
+            CARD
+        ========================= */}
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-8">
 
           <form onSubmit={handleVerify}>
 
-            {/* Mobile */}
+            {/* =========================
+                MOBILE NUMBER
+            ========================= */}
             <div className="mb-7">
 
               <p className="text-sm text-gray-500">
@@ -129,7 +256,9 @@ export default function VerifyOtpPage() {
 
             </div>
 
-            {/* OTP */}
+            {/* =========================
+                OTP INPUT
+            ========================= */}
             <div>
 
               <label className="block text-sm font-medium text-[#0b2545] mb-3">
@@ -139,7 +268,6 @@ export default function VerifyOtpPage() {
               <div className="flex justify-between gap-2">
 
                 {otp.map((digit, index) => (
-
                   <input
                     key={index}
                     id={`otp-${index}`}
@@ -147,6 +275,7 @@ export default function VerifyOtpPage() {
                     inputMode="numeric"
                     maxLength={1}
                     value={digit}
+                    disabled={loading}
                     onChange={(e) =>
                       handleChange(
                         index,
@@ -154,18 +283,22 @@ export default function VerifyOtpPage() {
                       )
                     }
                     onKeyDown={(e) =>
-                      handleKeyDown(index, e)
+                      handleKeyDown(
+                        index,
+                        e
+                      )
                     }
-                    className="w-12 h-14 text-center text-xl font-semibold text-gray-900 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500"
+                    className="w-12 h-14 text-center text-xl font-semibold text-gray-900 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 disabled:bg-gray-100"
                   />
-
                 ))}
 
               </div>
 
             </div>
 
-            {/* Resend */}
+            {/* =========================
+                RESEND OTP
+            ========================= */}
             <div className="mt-6 text-center">
 
               <p className="text-sm text-gray-500">
@@ -174,24 +307,41 @@ export default function VerifyOtpPage() {
 
               <button
                 type="button"
-                className="mt-1 text-sm font-semibold text-green-600 hover:underline"
+                onClick={handleResendOtp}
+                disabled={
+                  loading ||
+                  resendLoading ||
+                  resendCooldown > 0
+                }
+                className="mt-1 text-sm font-semibold text-green-600 hover:underline disabled:cursor-not-allowed disabled:opacity-50"
               >
-                Resend OTP
+                {resendLoading
+                  ? "Sending..."
+                  : resendCooldown > 0
+                  ? `Resend OTP in ${resendCooldown}s`
+                  : "Resend OTP"}
               </button>
 
             </div>
 
-            {/* Verify */}
+            {/* =========================
+                VERIFY BUTTON
+            ========================= */}
             <button
               type="submit"
-              className="mt-7 w-full rounded-xl bg-green-600 py-3.5 font-semibold text-white transition hover:bg-green-700"
+              disabled={loading}
+              className="mt-7 w-full rounded-xl bg-green-600 py-3.5 font-semibold text-white transition hover:bg-green-700 disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Verify & Continue
+              {loading
+                ? "Verifying..."
+                : "Verify & Continue"}
             </button>
 
           </form>
 
-          {/* Security */}
+          {/* =========================
+              SECURITY MESSAGE
+          ========================= */}
           <div className="mt-6 rounded-xl bg-green-50 p-4">
 
             <p className="text-center text-xs leading-5 text-green-800">
@@ -204,13 +354,14 @@ export default function VerifyOtpPage() {
 
         </div>
 
-        {/* Footer */}
+        {/* =========================
+            FOOTER
+        ========================= */}
         <p className="mt-6 text-center text-xs text-gray-500">
           KisanSetu • Digital Procurement Platform
         </p>
 
       </div>
-
     </main>
   );
 }
